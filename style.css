@@ -4,7 +4,7 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--
 button,input,select,textarea{font:inherit;color:inherit;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:4px 8px;min-height:34px}
 button{cursor:pointer;min-width:34px}button:active{transform:scale(.95)}button:disabled{opacity:.4}button.p{background:var(--ac);border-color:var(--ac);color:#04121f;font-weight:600}
 header,#tr,nav,#tc,#lh{display:flex;align-items:center;gap:4px;padding:4px 6px;background:var(--s2);flex:none}header{border-bottom:1px solid var(--bd)}header b{color:var(--ac);margin-right:auto}
-#vb{position:relative;background:#000;flex:none;height:28vh;overflow:hidden}#vb>*{position:absolute;left:0;top:0}#v{background:#000;visibility:hidden}#vb.hv #v{visibility:visible}#cv{pointer-events:none}#vb:fullscreen{height:100%}
+#vb{position:relative;background:#000;flex:none;height:28vh;overflow:hidden}#vb>*{position:absolute;left:0;top:0}#v{background:#000;visibility:hidden}#vb.hv #v{visibility:visible}#cv{pointer-events:none}#vb{touch-action:none}#vb:fullscreen{height:100%}
 #tr{flex-wrap:wrap}#sk,#pan{flex:1 1 0;min-width:0;padding:0;min-height:24px}#tm{font:10px ui-monospace,monospace;color:var(--mt);flex:none}#tr .br{flex-basis:100%;height:0}#tr button{flex:1;min-width:0;padding:4px 2px}#tr #pp{flex:1.6}
 #tl{flex:none;background:var(--sf);border-top:1px solid var(--bd)}#tlc{display:block;width:100%;height:64px;touch-action:none}
 main{flex:1;min-height:0;background:var(--sf)}.pane{height:100%;overflow:hidden auto;min-width:0}#tc{padding:2px 6px}#tc button{min-height:28px;min-width:44px;padding:0}#pl{display:flex;flex-direction:column}#list{flex:1;overflow:auto}
@@ -54,3 +54,4 @@ body.kb #tl{display:none}body.kb #vb{height:24vh}
 .cpsw{flex:none;width:44px;min-width:0;padding:0;border:1px solid var(--bd);border-radius:6px}
 .cpm{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:70}
 .cpc{width:100%;max-width:520px;box-sizing:border-box;background:var(--sf);border-top:1px solid var(--bd);border-radius:14px 14px 0 0;padding:16px;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px;max-height:90%;overflow:auto}.cpc h3{margin:0}
+

@@ -9,17 +9,18 @@ function save(){clearTimeout(svt);svt=setTimeout(()=>idb('put','p',snap()).catch
 function ui(){$('#bu').disabled=hi<=0;$('#br').disabled=hi>=hist.length-1}
 function commit(d){const now=Date.now(),s=snap();if(d&&d===lastD&&now-lastT<900&&hi>0&&hi===hist.length-1)hist[hi]=s;else{hist=hist.slice(0,hi+1);hist.push(s);if(hist.length>100)hist.shift();hi=hist.length-1}lastD=d;lastT=now;save();ui()}
 function restore(i){hi=i;A=JSON.parse(hist[i]);if(!cur())sel=A.ev[0]?A.ev[0].id:null;lastD='';all();ui();save()}
-const undo=()=>hi>0&&restore(hi-1),redo=()=>hi<hist.length-1&&restore(hi+1);
+const undo=()=>{flushDrafts(1);hi>0&&restore(hi-1)},redo=()=>{flushDrafts(1);hi<hist.length-1&&restore(hi+1)};
 const all=()=>{renderList();renderEdit();renderStyles();dirty=1};
 function chg(d){sortEv();commit(d);renderList();dirty=1}
 /* actions */
 const mk=o=>({id:gid(),type:'Dialogue',layer:0,start:T,end:T+3,style:A.styles[0].name,name:'',marginl:0,marginr:0,marginv:0,effect:'',text:'',...o});
-function add(){const e=mk();A.ev.push(e);sel=e.id;chg('add');renderEdit();tab('edit')}
-function dup(){const e=cur();if(!e)return;const n={...e,id:gid(),start:e.end,end:e.end+e.end-e.start};A.ev.push(n);sel=n.id;chg('dup');renderEdit()}
-function split(){const e=cur();if(!e||T<=e.start+.02||T>=e.end-.02)return toast('Move the playhead inside the selected line');const n={...e,id:gid(),start:T};e.end=T;A.ev.push(n);sel=n.id;chg('split');renderEdit()}
+function add(){flushDrafts(1);const e=mk();A.ev.push(e);sel=e.id;chg('add');renderEdit();tab('edit')}
+function dup(){flushDrafts(1);const e=cur();if(!e)return;const n={...e,id:gid()};A.ev.splice(A.ev.indexOf(e)+1,0,n);sel=n.id;chg('dup');renderEdit();const r=rows.get(n.id);if(r)r.scrollIntoView({block:'nearest'})}
+function split(){flushDrafts(1);const e=cur();if(!e||T<=e.start+.02||T>=e.end-.02)return toast('Move the playhead inside the selected line');const n={...e,id:gid(),start:T};e.end=T;A.ev.push(n);sel=n.id;chg('split');renderEdit()}
+function mv(d){flushDrafts(1);const e=cur();if(!e)return;const i=A.ev.indexOf(e),n=A.ev[i+d];if(!n||n.start!==e.start)return toast(n?'Only lines with the same start time can be reordered':'No more lines to swap with');A.ev[i]=n;A.ev[i+d]=e;chg('move');const r=rows.get(e.id);if(r)r.scrollIntoView({block:'nearest'})}
 function del(){const e=cur();if(!e)return;const i=A.ev.indexOf(e);A.ev.splice(i,1);drafts.delete(e.id);sel=(A.ev[i]||A.ev[i-1]||{}).id||null;chg('del');renderEdit()}
-function select(id){sel=id;markRows();renderEdit();const r=rows.get(id);if(r)r.scrollIntoView({block:'nearest'})}
-function tab(n){document.querySelectorAll('.pane').forEach(p=>p.hidden=p.id!==n);document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===n))}
+function select(id){flushDrafts();sel=id;markRows();renderEdit();const r=rows.get(id);if(r)r.scrollIntoView({block:'nearest'})}
+function tab(n){if(n!=='edit')flushDrafts();document.querySelectorAll('.pane').forEach(p=>p.hidden=p.id!==n);document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===n))}
 function renderList(){const L=$('#list');L.textContent='';rows.clear();A.ev.forEach((e,i)=>{const r=h('div',{class:'row'+(e.type==='Comment'?' cm':''),onclick:()=>{if(sel===e.id)return tab('edit');select(e.id);seek(e.start);tlCenter(e)}},h('div',{class:'m'},`#${i+1}  ${e.style}  ${s2t(e.start)} → ${s2t(e.end)}`),h('div',{class:'t',dir:'auto'},strip(e.text)||'—'));rows.set(e.id,r);L.append(r)});markRows();if(!A.ev.length)L.append(h('div',{class:'mt'},h('p',{},'No lines yet. Import a subtitle file, or tap + to add a line at the playhead.'),h('button',{class:'p',onclick:()=>$('#fa').click()},'Import .ass')))}
 const markRows=()=>rows.forEach((r,id)=>r.classList.toggle('sel',id===sel));
 const TG=[{l:'Top',d:'Show at the top of the screen',t:'\\an8',pre:1},{l:'Middle',d:'Show in the middle of the screen',t:'\\an5',pre:1},{l:'Bottom',d:'Show at the bottom (default)',t:'\\an2',pre:1},
@@ -27,8 +28,10 @@ const TG=[{l:'Top',d:'Show at the top of the screen',t:'\\an8',pre:1},{l:'Middle
 {l:'Outline',d:'Border thickness',t:'\\bord3'},{l:'Shadow',d:'Shadow distance',t:'\\shad2'},{l:'Blur',d:'Soften the edges',t:'\\blur2'},{l:'Fade',d:'Fade in and out, in milliseconds',t:'\\fad(200,200)'},
 {l:'Move',d:'Slide from x1,y1 to x2,y2',t:'\\move(0,540,1920,540)'},{l:'Position',d:'Exact place x,y on the screen',t:'\\pos(960,540)'},{l:'Transparency',d:'00 solid, FF invisible',t:'\\alpha&H80&'},{l:'Rotate',d:'Rotate, in degrees',t:'\\frz10'},{l:'Reset',d:'Back to the style look',t:'\\r'}];
 const drafts=new Map();
+/* auto-save: apply every pending edit to the project (Cancel is the only way to discard) */
+function flushDrafts(quiet){let n=0;drafts.forEach((d,id)=>{const e=A.ev.find(x=>x.id===id);if(e&&JSON.stringify(d)!==JSON.stringify(e)){Object.assign(e,d);n++}});drafts.clear();if(n){chg('autosave');idb('put','p',snap()).catch(()=>{});renderEdit();if(!quiet)toast('Line auto-saved')}return n}
 function renderEdit(){const P=$('#edit');P.textContent='';const src=cur();if(!src){P.append(h('div',{class:'mt'},'Select a line in the Lines tab.'));return}const e=drafts.get(src.id)||{...src};
-const sb=h('button',{class:'p',onclick:()=>{Object.assign(src,e);drafts.delete(src.id);chg('save'+src.id);renderEdit();toast('Line saved')}},ico('check'),'Save line'),db=h('button',{onclick:()=>{drafts.delete(src.id);dirty=1;tab('pl');const r=rows.get(src.id);if(r)r.scrollIntoView({block:'center'})}},'Cancel'),bar=h('div',{class:'sv'},sb,db);
+const sb=h('button',{class:'p',onclick:()=>{Object.assign(src,e);drafts.delete(src.id);chg('save'+src.id);renderEdit();toast('Line saved')}},ico('check'),'Save line'),db=h('button',{onclick:()=>{if(drafts.has(src.id))toast('Changes discarded');drafts.delete(src.id);dirty=1;tab('pl');const r=rows.get(src.id);if(r)r.scrollIntoView({block:'center'})}},'Cancel'),bar=h('div',{class:'sv'},sb,db);
 const touch=()=>{dirty=1;if(JSON.stringify(e)===JSON.stringify(src))drafts.delete(src.id);else drafts.set(src.id,e);sb.disabled=!drafts.has(src.id)};sb.disabled=!drafts.has(src.id);
 const ti=(k,l)=>{const i=h('input',{value:s2t(e[k]),placeholder:'0:00:00.00',onchange:()=>{const v=t2s(i.value);if(v==null){i.value=s2t(e[k]);return}e[k]=k==='start'?clamp(v,0,e.end-.05):Math.max(v,e.start+.05);i.value=s2t(e[k]);touch()}});return h('label',{class:'f'},l,i)};
 const ni=(l,k)=>{const i=h('input',{type:'number',value:e[k],oninput:()=>{e[k]=parseInt(i.value)||0;touch()}});return h('label',{class:'f'},l,i)};
