@@ -8,7 +8,7 @@ V.onerror=()=>{if(!V.getAttribute('src'))return;hasVideo=false;vb.classList.remo
 vb.onclick=()=>play(!playing);$('#fs').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen();else if(vb.requestFullscreen)vb.requestFullscreen();else if(V.webkitEnterFullscreen)V.webkitEnterFullscreen()};
 $('#pp').onclick=()=>play(!playing);$('#b1').onclick=()=>seek(T-5);$('#b4').onclick=()=>seek(T+5);$('#b2').onclick=()=>seek(T-.04);$('#b3').onclick=()=>seek(T+.04);
 $('#rt').onclick=()=>{const R=[.5,1,1.5,2];rate=R[(R.indexOf(rate)+1)%R.length];V.playbackRate=rate;$('#rt').textContent=rate+'x'};$('#sk').oninput=ev=>seek(+ev.target.value);
-let lastRow=-9,lastTL=0;function hud(d){fcUpd();$('#tm').textContent=fm(T)+' / '+fm(dur());const s=$('#sk');s.max=dur();if(document.activeElement!==s)s.value=T;if(Math.abs(T-lastRow)>.05||d){lastRow=T;A.ev.forEach(e=>{const r=rows.get(e.id);if(r)r.classList.toggle('act',T>=e.start&&T<e.end)})}}
+let lastRow=-9,lastTL=0;function hud(d){fcUpd();$('#tm').textContent=fm(T)+' / '+fm(dur());const s=$('#sk');s.max=dur();if(document.activeElement!==s)s.value=T;if(Math.abs(T-lastRow)>.05||d){lastRow=T;A.ev.forEach(e=>{const r=rows.get(e.id);if(r)r.classList.toggle('act',T>=e.start&&T<e.end)});lfScroll(0)}}
 let last=performance.now(),lastDraw=-1;
 function loop(ts){requestAnimationFrame(loop);const dt=Math.min((ts-last)/1000,.2);last=ts;
 if(playing){if(hasVideo){if(!V.seeking)T=V.currentTime}else{T+=dt*rate;if(T>=dur()){T=dur();setP(false)}}}
@@ -65,10 +65,24 @@ let sd=null,sdJ=false;
 function setMar(e,b,dx,dy){const l=b.l+dx,r=b.r+dx,n=b.n+dy,M=v=>Math.max(1,Math.round(v));
 if(b.col===0)e.marginl=M(l/b.sx);else if(b.col===2)e.marginr=M((b.fw-r)/b.sx);else{const c2=l+r;if(c2<=b.fw){e.marginl=1;e.marginr=M((b.sx+b.fw-c2)/b.sx)}else{e.marginr=1;e.marginl=M((c2-b.fw+b.sx)/b.sx)}}
 if(b.row===2)e.marginv=M((b.fh-n-b.H)/b.sy);else if(b.row===0)e.marginv=M(n/b.sy);else if(!sd.warn&&Math.abs(dy)>12){sd.warn=1;toast('Middle alignment can only move left/right. Use Top or Bottom to move it up/down.')}}
-function setAn(e,n){const t=e.text.replace(/\\an[1-9]/g,'');e.text=t[0]==='{'?'{\\an'+n+t.slice(1):'{\\an'+n+'}'+t}
-function setPos(e,x,y){const t=e.text.replace(/\\(?:pos|move)\([^)]*\)/g,''),p='\\pos('+x+','+y+')';e.text=t[0]==='{'?'{'+p+t.slice(1):'{'+p+'}'+t}
-vb.addEventListener('pointerdown',ev=>{if(!tlEdit||ev.target.closest('#fc'))return;const r=cvs.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top;let b=null;for(let i=subBoxes.length-1;i>=0;i--){const q=subBoxes[i];if(px>=q.l-8&&px<=q.r+8&&py>=q.t-8&&py<=q.b+8){b=q;break}}if(b)sd={b,x0:ev.clientX,y0:ev.clientY,moved:false,id:ev.pointerId}});
-vb.addEventListener('pointermove',ev=>{if(!sd||ev.pointerId!==sd.id)return;const dx=ev.clientX-sd.x0,dy=ev.clientY-sd.y0;if(!sd.moved){if(Math.hypot(dx,dy)<8)return;sd.moved=true;try{vb.setPointerCapture(ev.pointerId)}catch(x){}flushDrafts(1);if(sel!==sd.b.id)select(sd.b.id);const e0=A.ev.find(x=>x.id===sd.b.id);if(e0&&(sd.b.p||sd.b.row===1)){const b=sd.b;e0.text=e0.text.replace(/\\(?:pos|move)\([^)]*\)/g,'');let row=b.row;if(row===1){row=(b.t+b.b)/2>b.fh/2?2:0;setAn(e0,(row===2?1:7)+b.col)}sd.b={...b,p:false,row}}}
+function setAn(e,n){const t=e.text.replace(/\\an[1-9]/g,'').replace(/\{\}/g,'');e.text=t[0]==='{'?'{\\an'+n+t.slice(1):'{\\an'+n+'}'+t}
+function setPos(e,x,y){const t=e.text.replace(/\\(?:pos|move)\([^)]*\)/g,'').replace(/\{\}/g,''),p='\\pos('+x+','+y+')';e.text=t[0]==='{'?'{'+p+t.slice(1):'{'+p+'}'+t}
+vb.addEventListener('pointerdown',ev=>{if(ev.target.closest('#fc'))return;const r=cvs.getBoundingClientRect(),px=ev.clientX-r.left,py=ev.clientY-r.top;if(mvAct!==null&&mvHook){const p=mvInfo();if(p){const f=fit(),sx=f.w/(num(gi('PlayResX'),1920)||1920),sy=f.h/(num(gi('PlayResY'),1080)||1080);md={k:mvAct,id:ev.pointerId,x0:ev.clientX,y0:ev.clientY,ox:p[mvAct*2]*sx,oy:p[mvAct*2+1]*sy,sx,sy};try{vb.setPointerCapture(ev.pointerId)}catch(x){}return}}if(!tlEdit)return;let b=null;for(let i=subBoxes.length-1;i>=0;i--){const q=subBoxes[i];if(px>=q.l-8&&px<=q.r+8&&py>=q.t-8&&py<=q.b+8){b=q;break}}if(b){const e1=A.ev.find(x=>x.id===b.id);if(e1&&/\\move\(/.test(e1.text)){toast('This line slides from S to E: use the Move buttons in the Edit tab');return}sd={b,x0:ev.clientX,y0:ev.clientY,moved:false,id:ev.pointerId}}});
+vb.addEventListener('pointermove',ev=>{if(!sd||ev.pointerId!==sd.id)return;const dx=ev.clientX-sd.x0,dy=ev.clientY-sd.y0;if(!sd.moved){if(Math.hypot(dx,dy)<8)return;sd.moved=true;try{vb.setPointerCapture(ev.pointerId)}catch(x){}flushDrafts(1);if(sel!==sd.b.id)select(sd.b.id);const e0=A.ev.find(x=>x.id===sd.b.id);if(e0&&(sd.b.p||sd.b.row===1)){const b=sd.b;e0.text=e0.text.replace(/\\(?:pos|move)\([^)]*\)/g,'').replace(/\{\}/g,'');let row=b.row;if(row===1){row=(b.t+b.b)/2>b.fh/2?2:0;setAn(e0,(row===2?1:7)+b.col)}sd.b={...b,p:false,row}}}
 const e=A.ev.find(x=>x.id===sd.b.id);if(!e)return;if(sd.b.p)setPos(e,Math.round((sd.b.ax+dx)/sd.b.sx),Math.round((sd.b.ay+dy)/sd.b.sy));else setMar(e,sd.b,dx,dy);dirty=1});
 const sdEnd=ev=>{if(!sd||ev.pointerId!==sd.id)return;const s=sd;sd=null;if(s.moved){sdJ=true;setTimeout(()=>{sdJ=false},80);const e=A.ev.find(x=>x.id===s.b.id);if(e){chg('pos'+e.id);renderEdit()}}};
 vb.addEventListener('pointerup',sdEnd);vb.addEventListener('pointercancel',sdEnd);
+
+/* auto-scroll the lines list with the playhead */
+let lfOn=false,lfId=null;try{lfOn=localStorage.getItem('lfo')==='1'}catch(e){}
+function lfScroll(force){if(!lfOn)return;const L=$('#list');if(!L||!L.clientHeight)return;let c=null;for(const e of A.ev){if(e.start<=T)c=e;else break}if(!c)return;if(!force&&c.id===lfId)return;const r=rows.get(c.id);if(!r)return;lfId=c.id;const lr=L.getBoundingClientRect(),rr=r.getBoundingClientRect();L.scrollBy({top:rr.top-lr.top-(L.clientHeight-rr.height)/2,behavior:'smooth'})}
+const lfb=$('#lf'),lfUI=()=>{lfb.classList.toggle('p',lfOn);lfb.setAttribute('aria-pressed',lfOn)};
+lfb.onclick=()=>{lfOn=!lfOn;lfId=null;try{localStorage.setItem('lfo',lfOn?'1':'0')}catch(e){}lfUI();toast(lfOn?'List follows playback':'List auto-scroll off');lfScroll(1)};
+lfUI();
+
+/* Move effect: after tapping Start/End in the Move panel, touch or drag on the video to place that point */
+let md=null;
+function mdPlace(ev){if(!mvHook||!md)return;mvHook(md.k,Math.round((md.ox+ev.clientX-md.x0)/md.sx),Math.round((md.oy+ev.clientY-md.y0)/md.sy));dirty=1}
+vb.addEventListener('pointermove',ev=>{if(md&&ev.pointerId===md.id)mdPlace(ev)});
+const mdEnd=ev=>{if(!md||ev.pointerId!==md.id)return;md=null;sdJ=true;setTimeout(()=>{sdJ=false},80)};
+vb.addEventListener('pointerup',mdEnd);vb.addEventListener('pointercancel',mdEnd);

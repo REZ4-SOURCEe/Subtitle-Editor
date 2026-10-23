@@ -14,5 +14,5 @@ ef.forEach((k,i)=>{if(i>=p.length)return;const v=p[i];if(k==='start'||k==='end')
 else if(sec==='fonts'){const fm_=l.match(/^fontname:\s*(.+)$/);if(fm_)R.fonts.push({file:fm_[1].trim(),data:''});else if(R.fonts.length)R.fonts[R.fonts.length-1].data+=l}
 else if(R.extra.length)R.extra[R.extra.length-1].l.push(l)}
 if(!R.styles.length)R.styles.push({...DS});if(!R.info.some(l=>/^playresx:/i.test(l)))R.info.push('PlayResX: 1920','PlayResY: 1080');R.ev.sort((a,b)=>a.start-b.start);return R}
-const p4=n=>String(n).padStart(4,'0');
+const p4=n=>{n=Math.round(+n)||0;return n<0?'-'+String(-n).padStart(3,'0'):String(n).padStart(4,'0')};
 const ser=(A,o={})=>{const L=['[Script Info]',...A.info.map(l=>/^scripttype:/i.test(l)?'ScriptType: v4.00+':l),'','[V4+ Styles]','Format: '+SH.join(', '),...A.styles.map(S=>'Style: '+SK.map(k=>S[k]).join(',')),'','[Events]','Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',...A.ev.map(e=>`${e.type}: ${e.layer},${s2t(e.start)},${s2t(e.end)},${e.style},${e.name},${p4(e.marginl)},${p4(e.marginr)},${p4(e.marginv)},${e.effect},${xf(String(e.text).replace(/\r?\n/g,'\\N'),o)}`)];L.push(...fontLines());for(const x of A.extra)L.push('','['+x.n+']',...x.l);L.push('');return L.join('\r\n')};

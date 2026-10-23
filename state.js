@@ -1,7 +1,7 @@
 /* state */
 let A=newA(),sel=null,hist=[],hi=-1,lastD='',lastT=0,T=0,playing=false,hasVideo=false,rate=1,dirty=1,vurl=null,ss=0,tv0=0,span=30,drag=null,hits=[],rows=new Map(),svt;
 const V=$('#v'),cur=()=>A.ev.find(e=>e.id===sel),gi=k=>{const r=A.info.find(l=>l.toLowerCase().startsWith(k.toLowerCase()+':'));return r?r.slice(r.indexOf(':')+1).trim():''};
-const dur=()=>hasVideo?V.duration:A.ev.reduce((m,e)=>Math.max(m,e.end+5),60),strip=t=>t.replace(/\{[^}]*\}/g,'').replace(/\\[Nn]/g,' '),sortEv=()=>A.ev.sort((a,b)=>a.start-b.start);
+const dur=()=>hasVideo?V.duration:A.ev.reduce((m,e)=>Math.max(m,e.end+5),60),strip=t=>t.replace(/\{[^}]*\}/g,'').replace(/\\[Nn]/g,' '),skey=e=>e.k!==undefined&&e.ks===e.start?e.k:e.start,sortEv=()=>A.ev.sort((a,b)=>skey(a)-skey(b));
 const db=()=>new Promise((res,rej)=>{try{const r=indexedDB.open('asse',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onsuccess=()=>res(r.result);r.onerror=()=>rej()}catch(e){rej(e)}});
 const idb=async(m,k,v)=>{const d=await db();return new Promise((res,rej)=>{const s=d.transaction('k',m==='get'?'readonly':'readwrite').objectStore('k'),q=m==='get'?s.get(k):s.put(v,k);q.onsuccess=()=>res(q.result);q.onerror=rej})};
 const snap=()=>JSON.stringify(A);
@@ -17,12 +17,20 @@ const mk=o=>({id:gid(),type:'Dialogue',layer:0,start:T,end:T+3,style:A.styles[0]
 function add(){flushDrafts(1);const e=mk();A.ev.push(e);sel=e.id;chg('add');renderEdit();tab('edit')}
 function dup(){flushDrafts(1);const e=cur();if(!e)return;const n={...e,id:gid()};A.ev.splice(A.ev.indexOf(e)+1,0,n);sel=n.id;chg('dup');renderEdit();const r=rows.get(n.id);if(r)r.scrollIntoView({block:'nearest'})}
 function split(){flushDrafts(1);const e=cur();if(!e||T<=e.start+.02||T>=e.end-.02)return toast('Move the playhead inside the selected line');const n={...e,id:gid(),start:T};e.end=T;A.ev.push(n);sel=n.id;chg('split');renderEdit()}
-function mv(d){flushDrafts(1);const e=cur();if(!e)return;const i=A.ev.indexOf(e),n=A.ev[i+d];if(!n||n.start!==e.start)return toast(n?'Only lines with the same start time can be reordered':'No more lines to swap with');A.ev[i]=n;A.ev[i+d]=e;chg('move');const r=rows.get(e.id);if(r)r.scrollIntoView({block:'nearest'})}
+/* Swap the on-screen place of two lines (margins + \an / \pos / \move) so Up/Down always changes what you see, even when the lines were dragged or placed differently */
+const PLC=/\\(?:an\d|pos\([^)]*\)|move\([^)]*\))/g;
+function swapPlace(a,b){const ta=a.text.match(PLC)||[],tb=b.text.match(PLC)||[],pa=ta.join(''),pb=tb.join('');if(pa===pb&&a.marginl===b.marginl&&a.marginr===b.marginr&&a.marginv===b.marginv)return;
+const put=(t,p)=>{t=t.replace(PLC,'').replace(/\{\}/g,'');return p?(t[0]==='{'?'{'+p+t.slice(1):'{'+p+'}'+t):t};
+for(const k of['marginl','marginr','marginv']){const x=a[k];a[k]=b[k];b[k]=x}a.text=put(a.text,pb);b.text=put(b.text,pa)}
+function mv(d){flushDrafts(1);const e=cur();if(!e)return;const n=mvTarget(e,d);if(!n)return toast('No overlapping line to swap with');const i=A.ev.indexOf(e),j=A.ev.indexOf(n),ke=skey(e),kn=skey(n);A.ev[i]=n;A.ev[j]=e;if(ke!==kn){e.k=kn;e.ks=e.start;n.k=ke;n.ks=n.start}swapPlace(e,n);chg('move');renderEdit();const r=rows.get(e.id);if(r)r.scrollIntoView({block:'nearest'})}
 function del(){const e=cur();if(!e)return;const i=A.ev.indexOf(e);A.ev.splice(i,1);drafts.delete(e.id);sel=(A.ev[i]||A.ev[i-1]||{}).id||null;chg('del');renderEdit()}
-function select(id){flushDrafts();sel=id;markRows();renderEdit();const r=rows.get(id);if(r)r.scrollIntoView({block:'nearest'})}
-function tab(n){if(n!=='edit')flushDrafts();document.querySelectorAll('.pane').forEach(p=>p.hidden=p.id!==n);document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===n))}
+function select(id){flushDrafts();mvAct=null;mvHook=null;sel=id;dirty=1;markRows();renderEdit();const r=rows.get(id);if(r)r.scrollIntoView({block:'nearest'})}
+function tab(n){if(n!=='edit')flushDrafts();if(n==='pl')requestAnimationFrame(()=>{lfId=null;lfScroll(1)});document.querySelectorAll('.pane').forEach(p=>p.hidden=p.id!==n);document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===n))}
 function renderList(){const L=$('#list');L.textContent='';rows.clear();A.ev.forEach((e,i)=>{const r=h('div',{class:'row'+(e.type==='Comment'?' cm':''),onclick:()=>{if(sel===e.id)return tab('edit');select(e.id);seek(e.start);tlCenter(e)}},h('div',{class:'m'},`#${i+1}  ${e.style}  ${s2t(e.start)} → ${s2t(e.end)}`),h('div',{class:'t',dir:'auto'},strip(e.text)||'—'));rows.set(e.id,r);L.append(r)});markRows();if(!A.ev.length)L.append(h('div',{class:'mt'},h('p',{},'No lines yet. Import a subtitle file, or tap + to add a line at the playhead.'),h('button',{class:'p',onclick:()=>$('#fa').click()},'Import .ass')))}
-const markRows=()=>rows.forEach((r,id)=>r.classList.toggle('sel',id===sel));
+const ovl=(a,b)=>a!==b&&a.type==='Dialogue'&&b.type==='Dialogue'&&a.start<b.end&&b.start<a.end;
+function mvTarget(e,d){for(let j=A.ev.indexOf(e)+d;j>=0&&j<A.ev.length;j+=d)if(ovl(e,A.ev[j]))return A.ev[j];return null}
+function mvBtnState(){const u=$('#lu'),w=$('#lw');if(!u||!w)return;const e=A.ev.find(x=>x.id===sel);u.disabled=!(e&&mvTarget(e,-1));w.disabled=!(e&&mvTarget(e,1))}
+const markRows=()=>{rows.forEach((r,id)=>r.classList.toggle('sel',id===sel));mvBtnState()};
 const TG=[{l:'Top',d:'Show at the top of the screen',t:'\\an8',pre:1},{l:'Middle',d:'Show in the middle of the screen',t:'\\an5',pre:1},{l:'Bottom',d:'Show at the bottom (default)',t:'\\an2',pre:1},
 {l:'Size',d:'Font size, change the number',t:'\\fs60'},{l:'Font',d:'Font for the rest of the line',t:S=>'\\fn'+S.fontname},{l:'Color',d:'Text color (blue-green-red hex)',t:'\\c&HFFFFFF&'},{l:'Outline color',d:'Border color',t:'\\3c&H000000&'},
 {l:'Outline',d:'Border thickness',t:'\\bord3'},{l:'Shadow',d:'Shadow distance',t:'\\shad2'},{l:'Blur',d:'Soften the edges',t:'\\blur2'},{l:'Fade',d:'Fade in and out, in milliseconds',t:'\\fad(200,200)'},
@@ -30,7 +38,7 @@ const TG=[{l:'Top',d:'Show at the top of the screen',t:'\\an8',pre:1},{l:'Middle
 const drafts=new Map();
 /* auto-save: apply every pending edit to the project (Cancel is the only way to discard) */
 function flushDrafts(quiet){let n=0;drafts.forEach((d,id)=>{const e=A.ev.find(x=>x.id===id);if(e&&JSON.stringify(d)!==JSON.stringify(e)){Object.assign(e,d);n++}});drafts.clear();if(n){chg('autosave');idb('put','p',snap()).catch(()=>{});renderEdit();if(!quiet)toast('Line auto-saved')}return n}
-function renderEdit(){const P=$('#edit');P.textContent='';const src=cur();if(!src){P.append(h('div',{class:'mt'},'Select a line in the Lines tab.'));return}const e=drafts.get(src.id)||{...src};
+function renderEdit(){mvAct=null;mvHook=null;const P=$('#edit');P.textContent='';const src=cur();if(!src){P.append(h('div',{class:'mt'},'Select a line in the Lines tab.'));return}const e=drafts.get(src.id)||{...src};
 const sb=h('button',{class:'p',onclick:()=>{Object.assign(src,e);drafts.delete(src.id);chg('save'+src.id);renderEdit();toast('Line saved')}},ico('check'),'Save line'),db=h('button',{onclick:()=>{if(drafts.has(src.id))toast('Changes discarded');drafts.delete(src.id);dirty=1;tab('pl');const r=rows.get(src.id);if(r)r.scrollIntoView({block:'center'})}},'Cancel'),bar=h('div',{class:'sv'},sb,db);
 const touch=()=>{dirty=1;if(JSON.stringify(e)===JSON.stringify(src))drafts.delete(src.id);else drafts.set(src.id,e);sb.disabled=!drafts.has(src.id)};sb.disabled=!drafts.has(src.id);
 const ti=(k,l)=>{const i=h('input',{value:s2t(e[k]),placeholder:'0:00:00.00',onchange:()=>{const v=t2s(i.value);if(v==null){i.value=s2t(e[k]);return}e[k]=k==='start'?clamp(v,0,e.end-.05):Math.max(v,e.start+.05);i.value=s2t(e[k]);touch()}});return h('label',{class:'f'},l,i)};
@@ -58,17 +66,18 @@ const FX=[
 {l:'Shadow',re:/\\shad[\d.]+/,f:[N('Shadow distance',style.shadow,.5)],b:v=>'\\shad'+v[0],r:m=>[m.slice(5)]},
 {l:'Blur',re:/\\blur[\d.]+/,f:[N('Blur amount',2,.5)],b:v=>'\\blur'+v[0],r:m=>[m.slice(5)]},
 {l:'Fade',re:/\\fad\([^)]*\)/,f:[N('Fade in (ms)',200,50),N('Fade out (ms)',200,50)],b:v=>'\\fad('+v[0]+','+v[1]+')',r:nums},
-{l:'Move',re:/\\move\([^)]*\)/,f:[N('From X',Math.round(px/2)),N('From Y',Math.round(py*.85)),N('To X',Math.round(px/2)),N('To Y',Math.round(py*.7))],b:v=>'\\move('+v.join(',')+')',r:nums},
+{l:'Move',re:/\\move\([^)]*\)/,f:[N('From X',Math.round(px/2)),N('From Y',Math.round(py*.85)),N('To X',Math.round(px/2)),N('To Y',Math.round(py*.7)),N('Speed (1 = whole line)',1,.5)],b:v=>{const d=Math.max(100,(e.end-e.start)*1000),sp=Math.max(.1,+v[4]||1);return '\\move('+v.slice(0,4).join(',')+(Math.abs(sp-1)>.001?',0,'+Math.round(d/sp):'')+')'},r:m=>{const n=nums(m),d=Math.max(100,(e.end-e.start)*1000),t=(+n[5]||0)-(+n[4]||0);return [n[0],n[1],n[2],n[3],n.length>=6&&t>0?Math.round(d/t*100)/100:1]}},
 {l:'Position',re:/\\pos\([^)]*\)/,f:[N('X',Math.round(px/2)),N('Y',Math.round(py*.85))],b:v=>'\\pos('+v.join(',')+')',r:nums},
 {l:'Transparency',re:/\\alpha&H[0-9a-fA-F]+&/,f:[N('Transparency %',50,5)],b:v=>'\\alpha&H'+Math.round(clamp(+v[0]||0,0,100)*2.55).toString(16).toUpperCase().padStart(2,'0')+'&',r:m=>[Math.round(parseInt(m.match(/&H([0-9a-f]+)/i)[1],16)/2.55)]},
 {l:'Rotate',re:/\\frz-?[\d.]+/,f:[N('Angle (degrees)',10)],b:v=>'\\frz'+v[0],r:m=>[m.slice(4)]}];
 const pd={onpointerdown:ev=>ev.preventDefault()};
 const chips=h('div',{class:'chips tg',...pd},h('button',{title:'New line','aria-label':'New line',onclick:()=>put('\n',ta.selectionStart,ta.selectionEnd)},ico('enter')),mk('B',()=>eff('b'),()=>flip('b'),{style:'font-weight:700'}),mk('I',()=>eff('i'),()=>flip('i'),{style:'font-style:italic'}),mk('U',()=>eff('u'),()=>flip('u'),{style:'text-decoration:underline'}),['Top','Middle','Bottom'].map((l,r)=>mk(l,()=>rowOf(curAn())===r,()=>togRow(r))));
 const fxp=h('div',{class:'fxp'});fxp.hidden=true;
-const closeP=()=>{fxp.hidden=true;fxp.textContent=''},delFx=F=>{tg.tags=tg.tags.replace(new RegExp(F.re.source,'g'),'');compose();refresh()},setFx=(F,v)=>{tg.tags=tg.tags.replace(new RegExp(F.re.source,'g'),'')+F.b(v);compose();refresh()};
-const openFx=F=>{const m=tg.tags.match(F.re),cur=m?F.r(m[0]):F.f.map(x=>x.d);if(!m)setFx(F,cur);fxp.hidden=false;fxp.textContent='';
-const inps=F.f.map((x,i)=>{if(x.t==='text')return h('div',{class:'f'},x.n,fontField(cur[i],v=>{cur[i]=v;if(v!=='')setFx(F,cur)}));if(x.t==='color')return h('div',{class:'f cpw'},x.n,colorPicker(cur[i],v=>{cur[i]=v;setFx(F,cur)}));const inp=h('input',{type:x.t==='color'?'color':x.t==='text'?'text':'number',value:cur[i],oninput:()=>{if(inp.value==='')return;cur[i]=inp.value;setFx(F,cur)}});if(x.t==='number')inp.step=x.st;if(x.t==='text')inp.setAttribute('list','fl');return h('label',{class:'f'},x.n,inp)});
-fxp.append(h('div',{class:'fxh'},F.l),h('div',{class:F.f.length>1?'g2':'g1'},...inps),h('div',{class:'g2'},h('button',{class:'p',onclick:closeP},'OK'),h('button',{onclick:()=>{delFx(F);closeP()}},'Remove')))};
+const closeP=()=>{fxp.hidden=true;fxp.textContent='';mvAct=null;mvHook=null;dirty=1},delFx=F=>{tg.tags=tg.tags.replace(new RegExp(F.re.source,'g'),'');compose();refresh()},setFx=(F,v)=>{tg.tags=tg.tags.replace(new RegExp(F.re.source,'g'),'')+F.b(v);compose();refresh()};
+const openFx=F=>{const m=tg.tags.match(F.re),cur=m?F.r(m[0]):F.f.map(x=>x.d);if(!m)setFx(F,cur);fxp.hidden=false;fxp.textContent='';mvAct=null;mvHook=null;const ins=[];
+const inps=F.f.map((x,i)=>{if(x.t==='text')return h('div',{class:'f'},x.n,fontField(cur[i],v=>{cur[i]=v;if(v!=='')setFx(F,cur)}));if(x.t==='color')return h('div',{class:'f cpw'},x.n,colorPicker(cur[i],v=>{cur[i]=v;setFx(F,cur)}));const inp=h('input',{type:x.t==='color'?'color':x.t==='text'?'text':'number',value:cur[i],oninput:()=>{if(inp.value==='')return;cur[i]=inp.value;setFx(F,cur)}});if(x.t==='number')inp.step=x.st;if(x.t==='text')inp.setAttribute('list','fl');ins[i]=inp;return h('label',{class:'f'},x.n,inp)});
+const hook=(k,x,y)=>{cur[k*2]=x;cur[k*2+1]=y;if(ins[k*2])ins[k*2].value=x;if(ins[k*2+1])ins[k*2+1].value=y;setFx(F,cur)},upd=()=>mvb.forEach((b,k)=>b.classList.toggle('p',mvAct===k)),mvb=[0,1].map(k=>h('button',{onclick:()=>{mvAct=mvAct===k?null:k;mvHook=mvAct===null?null:hook;upd();dirty=1}},k?'End':'Start'));
+fxp.append(h('div',{class:'fxh'},F.l),...(F.l==='Move'?[h('p',{class:'mt hn'},'Type the numbers, or tap Start or End and then drag on the video to move that position. Speed 2 = twice as fast, 0.5 = half as fast.')]:[]),h('div',{class:F.f.length>1?'g2':'g1'},...inps),...(F.l==='Move'?[h('div',{class:'g2'},...mvb)]:[]),h('div',{class:'g2'},h('button',{class:'p',onclick:closeP},'OK'),h('button',{onclick:()=>{delFx(F);closeP()}},'Remove')))};
 raw=h('input',{value:tg.tags,spellcheck:'false',dir:'ltr',onchange:()=>{tg.tags=raw.value.replace(/[{}]/g,'').trim();compose();refresh()}});
 const openRaw=()=>{fxp.hidden=false;fxp.textContent='';raw.value=tg.tags;fxp.append(h('div',{class:'fxh'},'Advanced codes'),h('label',{class:'f'},'Codes',raw),h('div',{class:'g1'},h('button',{class:'p',onclick:closeP},'OK')))};
 const more=h('details',{class:'mo'},h('summary',{},'More effects'),h('div',{class:'chips efx tg',...pd},FX.map(F=>mk(F.l,()=>F.re.test(tg.tags),()=>openFx(F))),h('button',{onclick:openRaw},'Codes')),fxp);
@@ -76,7 +85,7 @@ refresh();
 const sc=(t,...k)=>h('div',{class:'sec'},h('h4',{},t),...k);
 P.append(sc('Text',ta,chips,more,hint),
 sc('Timing',h('div',{class:'g2'},ti('start','Start'),ti('end','End'))),
-sc('Line style',h('label',{class:'f'},'Style',h('select',{value:e.style,onchange:ev=>{e.style=ev.target.value;touch();}},A.styles.map(s=>h('option',{value:s.name},s.name)))),
+sc('Line style',h('label',{class:'f'},'Style',dsel(A.styles.map(s=>({v:s.name,l:s.name})),e.style,v=>{e.style=v;touch()})),
 h('div',{class:'g2'},ni('Layer','layer'),h('label',{class:'f c'},h('input',{type:'checkbox',checked:e.type==='Comment',onchange:ev=>{e.type=ev.target.checked?'Comment':'Dialogue';touch()}}),'Comment'))),
 sc('Margins',h('div',{class:'g3'},ni('Margin L','marginl'),ni('Margin R','marginr'),ni('Margin V','marginv'))),bar);requestAnimationFrame(fit)}
 function renderStyles(){const P=$('#styles');P.textContent='';ss=clamp(ss,0,A.styles.length-1);const S=A.styles[ss];
@@ -97,7 +106,7 @@ P.append(h('div',{class:'chips'},A.styles.map((x,i)=>h('button',{class:i===ss?'p
 sec('Style name',ni),
 sec('Font',fontPick(),h('div',{class:'g2'},nf('Size','fontsize'),nf('Spacing','spacing',.5)),h('div',{class:'g4 tgl'},tgl('B','bold','font-weight:700'),tgl('I','italic','font-style:italic'),tgl('U','underline','text-decoration:underline'),tgl('S','strikeout','text-decoration:line-through'))),
 sec('Colors',h('div',{class:'g2'},cf('Fill','primarycolour'),cf('Outline','outlinecolour'),cf('Shadow','backcolour'),cf('Karaoke','secondarycolour'))),
-sec('Outline & shadow',h('div',{class:'g2'},nf('Outline','outline',.5),nf('Shadow','shadow',.5)),h('label',{class:'f'},'Border',h('select',{value:S.borderstyle,onchange:ev=>up('borderstyle',+ev.target.value)},h('option',{value:1},'Outline + shadow'),h('option',{value:3},'Opaque box')))),
+sec('Outline & shadow',h('div',{class:'g2'},nf('Outline','outline',.5),nf('Shadow','shadow',.5)),h('label',{class:'f'},'Border',dsel([{v:1,l:'Outline + shadow'},{v:3,l:'Opaque box'}],S.borderstyle,v=>up('borderstyle',+v)))),
 sec('Transform',h('div',{class:'g3'},nf('Scale X','scalex'),nf('Scale Y','scaley'),nf('Angle','angle'))),
 sec('Position',h('div',{class:'g3'},nf('Margin L','marginl'),nf('Margin R','marginr'),nf('Margin V','marginv')),h('div',{class:'ag'},[7,8,9,4,5,6,1,2,3].map(n=>h('button',{class:S.alignment===n?'p':'',onclick:()=>{up('alignment',n);renderStyles()}},n)))),
 sec('Embedded fonts',h('div',{class:'fonts'},F.length?F.map(x=>h('div',{class:'fr'},h('span',{},x.family+' · '+Math.round(x.bytes.length/1024)+' KB'),h('button',{title:'Remove font','aria-label':'Remove font',onclick:()=>removeFont(x)},ico('trash')))):h('p',{class:'mt hn'},'No fonts embedded yet.')),h('button',{class:'p',onclick:()=>$('#ff').click()},ico('plus'),'Add font file'),h('p',{class:'mt hn'},'Embedded fonts are saved inside the exported .ass file.')))}
